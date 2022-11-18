@@ -12,6 +12,8 @@ from transformers import BertModel, BertConfig, BertTokenizer
 import multiprocessing as mp
 from sklearn.cluster import KMeans
 
+from tqdm import tqdm
+
 from utils.mo_utils import *
 from utils.preprocess_text import *
 model_dir = u'./code/cluster_bert/model'
@@ -27,10 +29,10 @@ def data_process(chunk_list, n):
     result_list = []
     tmp_list = []
     print(len(chunk_list))
-    for i in range(len(chunk_list)):
+    for i in tqdm(range(len(chunk_list))):
         this_chunk_len = len(chunk_list[i])
-        if len(chunk_list[i]) <= 16 or len(chunk_list[i]) >= 127:
-            continue
+        # if len(chunk_list[i]) <= 16 or len(chunk_list[i]) >= 127:
+        #     continue
         text = chunk_list[i].replace(' ', '')
         tokenized_text = tokenizer(text, padding=True, truncation=True, return_tensors="pt").to(device)
         with torch.no_grad():
@@ -98,10 +100,34 @@ def get_normal_corpus(off_mod=True):
 
     return data_list
 
+def get_infer_samples(off_mod=True):
+    data_list_file = "./data/data_list.pkl"
+    if off_mod == True:
+        data_list = load_pickle(data_list_file)
+    else:
+        increment_time  = 0
+        # this_content_time_name = "tt_content_dict_pp" + str(increment_time) + ".pkl"
+        this_content_time_name = "tt_content_pp_dict_" + str(increment_time) + ".pkl"
+        tt_content_dict = load_pickle("./output/" + this_content_time_name)
+        #
+        normal_data_list =  []
+        for  i, (ck, cv) in enumerate(tt_content_dict.items()):
+            normal_data_list.append(cv[4][0])
+
+        data_list = normal_data_list
+        generate_pickle("./data/infer_data_list.pkl", data_list)
+
+    return data_list
+
 def get_text_embedding(data_list, off_mod=True):
-    df_all_file = "./data/df_all.pkl"
-    corpus_embeddings_file = "./data/corpus_embeddings.pkl"
-    corpus_file = "./data/corpus.pkl"
+    # df_all_file = "./data/df_all.pkl"
+    # corpus_embeddings_file = "./data/corpus_embeddings.pkl"
+    # corpus_file = "./data/corpus.pkl"
+
+    df_all_file = "./data/df_all_total.pkl"
+    corpus_embeddings_file = "./data/corpus_embeddings_total.pkl"
+    corpus_file = "./data/corpus_total.pkl"
+
 
     if off_mod == True:
         df_all = load_pickle(df_all_file)
@@ -160,9 +186,9 @@ def text_cluster(corpus_embeddings, corpus):
 
 
     print('verify model...')
-    # clustering_model = load_pickle("./data/clustering_model50.pkl")
-    # cluster_assignment = clustering_model.labels_
-    # print(clustering_model.predict(corpus_embeddings[:10]))
+    clustering_model = load_pickle("./data/clustering_model50.pkl")
+    cluster_assignment = clustering_model.labels_
+    print(clustering_model.predict(corpus_embeddings[:10]))
     # # 每个样本所属的簇
     # label = []  # 存储1000个类标 4个类
     # # print(clf.labels_)
@@ -216,6 +242,54 @@ def text_cluster(corpus_embeddings, corpus):
     # print("silhouette_score:",silhouette_score(test_tfidf, clf.labels_))
     pass
 
+def cluster_res_display(corpus_embeddings, corpus):
+    clustering_model = load_pickle("./data/clustering_model50.pkl")
+    cluster_assignment = clustering_model.labels_
+    print(clustering_model.predict(corpus_embeddings[:10]))
+    # 每个样本所属的簇
+    label = []  # 存储1000个类标 4个类
+    num_clusters = 50
+    # print(clf.labels_)
+    i = 0
+    print("save cluster result...")
+    clustered_sentences = [[] for i in range(num_clusters)]
+    # with open(f'./output/result_{time.strftime("%Y%m%d%H%I%S")}.txt', 'w') as fw:
+    for sentence_id, cluster_id in enumerate(cluster_assignment):
+        clustered_sentences[cluster_id].append(corpus[sentence_id])
+
+    generate_pickle("./output/cluster_result.pkl",  clustered_sentences)
+    clustered_sentences = load_pickle("./output/cluster_result.pkl")
+
+    f = open("./cluster_result.txt", 'wt')
+    for i, cluster in enumerate(clustered_sentences):
+        # print("Cluster ", i)
+        f.write("Cluster " + str(i) + '\n')
+        for j in range(len(cluster)):
+            # print(cluster[j])
+            f.write(cluster[j] + '\n')
+
+    f.close()
+
+def infer_cluster(corpus_embeddings):
+    # clf = pickle.load(open('./models/twitter_spider/cluster50_twitter_spider.pkl', "rb"))
+    # 942965
+    clustering_model = load_pickle("./data/clustering_model50.pkl")
+    clustering_labels = clustering_model.predict(corpus_embeddings)
+
+    this_content_time_name = "tt_content_dict_pp" + str(increment_time) + ".pkl"
+    # if off_mod == True:
+    tt_content_dict = load_pickle("./output/" + this_content_time_name)
+
+    print("聚类结果尺寸：", clustering_labels.shape)
+    print("内容字典尺寸：", len(tt_content_dict))
+
+    for i, (ck, cv) in enumerate(tqdm(tt_content_dict.items())):
+        tt_content_dict[ck][-1] = clustering_labels[i]
+
+    generate_pickle("./output/tt_content_cluster_dict.pkl",  tt_content_dict)
+
+    pass
+
 def analysis_text_cluster():
     clustered_sentences = load_pickle("./output/cluster_result.pkl")
     # f = open("./output/cluster_result50.txt", 'wt')
@@ -250,10 +324,15 @@ if __name__ == '__main__':
     increment_time = 0
 
     data_list = get_normal_corpus(off_mod=True)
+    # df_all, corpus_embeddings, corpus = get_text_embedding(data_list=None, off_mod=True)
     df_all, corpus_embeddings, corpus = get_text_embedding(data_list, off_mod=True)
-    text_cluster(corpus_embeddings, corpus)
+    # text_cluster(corpus_embeddings, corpus)
 
-    analysis_text_cluster()
+    cluster_res_display(corpus_embeddings, corpus)
+
+    # analysis_text_cluster()
+
+    # infer_cluster(corpus_embeddings)
 
 
 
